@@ -1,79 +1,50 @@
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from liboqs import KEMs
-from secretsharing import SecretSharer
 import os
 import datetime
 
-class KeyManager:
+class QuantumSafeKeyManager:
     def __init__(self, rotation_period_days=90):
         self.rotation_period = datetime.timedelta(days=rotation_period_days)
         self.last_rotation_date = datetime.datetime.now()
-        # Initialize RSA keys
-        self.rsa_public_key, self.rsa_private_key = self.generate_rsa_keys()
-
-    def generate_rsa_keys(self):
-        # Generate RSA keys compliant with current standards.
-        # This method should be adapted to use HSM for key generation in production environments.
-        private_key = rsa.generate_private_key(public_exponent=65537, key_size=3072)
-        public_key = private_key.public_key()
-        return public_key, private_key
+        # Initialize quantum-safe KEM keys
+        self.kem = KEMs().default()  # This selects the default KEM, adjust as necessary
+        self.public_key, self.secret_key = self.kem.keypair()
 
     def check_and_rotate_keys(self):
-        # Check if it's time to rotate the RSA keys and do so if necessary.
-        # For HSM integration, this would involve coordinating with the HSM's key lifecycle management features.
+        # Check if it's time to rotate the KEM keys and do so if necessary.
         if datetime.datetime.now() - self.last_rotation_date > self.rotation_period:
-            self.rsa_public_key, self.rsa_private_key = self.generate_rsa_keys()
+            self.public_key, self.secret_key = self.kem.keypair()
             self.last_rotation_date = datetime.datetime.now()
-            print("RSA keys rotated.")
+            print("KEM keys rotated.")
 
 class EnhancedHybridEncryption:
     def __init__(self):
-        self.key_manager = KeyManager()  # KeyManager handles RSA key lifecycle.
-        self.oqs_kem = KEMs().default()  # Use the default KEM from liboqs for post-quantum security.
-        
+        self.key_manager = QuantumSafeKeyManager()  # Handles quantum-safe KEM key lifecycle.
+    
     def generate_symmetric_key(self):
         # Symmetric key generation for AES encryption.
         return AESGCM.generate_key(bit_length=256)
     
     def encrypt(self, plaintext):
-        self.key_manager.check_and_rotate_keys()  # Ensure RSA keys are current.
+        self.key_manager.check_and_rotate_keys()  # Ensure KEM keys are current.
         
         aesgcm = AESGCM(self.generate_symmetric_key())
         nonce = os.urandom(12)
         encrypted_data = aesgcm.encrypt(nonce, plaintext.encode(), None)
         
-        # Placeholder for HSM-based or standard cryptographic operations.
-        public_key, secret_key = self.oqs_kem.keypair()
-        encapsulated_key, shared_secret = self.oqs_kem.encapsulate(public_key)
-        
-        encrypted_symmetric_key = self.key_manager.rsa_public_key.encrypt(
-            aesgcm.key,
-            padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
-        )
-        
-        # Conceptual placeholder for integrating secret sharing of the symmetric key or other sensitive information.
-        # shares = SecretSharer.split_secret(encrypted_symmetric_key, 2, 3) # Example: Split into 3 shares, 2 required to reconstruct.
+        encapsulated_key, shared_secret = self.key_manager.kem.encapsulate(self.key_manager.public_key)
         
         return {
             "encrypted_data": encrypted_data,
             "nonce": nonce,
-            "encrypted_symmetric_key": encrypted_symmetric_key,
             "encapsulated_key": encapsulated_key,
         }
     
     def decrypt(self, encryption_bundle):
-        # Simulated steps including decapsulation for post-quantum security.
-        shared_secret = self.oqs_kem.decapsulate(encryption_bundle["encapsulated_key"])
+        shared_secret = self.key_manager.kem.decapsulate(encryption_bundle["encapsulated_key"], self.key_manager.secret_key)
         
-        aes_key = self.key_manager.rsa_private_key.decrypt(
-            encryption_bundle["encrypted_symmetric_key"],
-            padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()), algorithm=hashes.SHA256(), label=None)
-        )
-        
-        aesgcm = AESGCM(aes_key)
+        aesgcm = AESGCM(shared_secret)
         decrypted_data = aesgcm.decrypt(encryption_bundle["nonce"], encryption_bundle["encrypted_data"], None)
         
         return decrypted_data.decode()
