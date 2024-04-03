@@ -2,6 +2,8 @@ Post-Quantum-Cryptography
 
 Welcome to the Post-Quantum-Cryptography repository! This project showcases a comprehensive approach towards post-quantum resistant cryptography, aimed at addressing the potential threats posed by quantum computing to current cryptographic methods.
 
+Link to Research Paper - https://ssrn.com/abstract=4705470
+
 Overview
 
 As quantum computing continues to advance, traditional cryptographic algorithms may become vulnerable to attacks. This repository provides an example of how to implement post-quantum resistant cryptography techniques to mitigate these threats. It includes implementations of various cryptographic systems, data integrity and authentication mechanisms, and encryption algorithms designed to withstand attacks from quantum computers.
