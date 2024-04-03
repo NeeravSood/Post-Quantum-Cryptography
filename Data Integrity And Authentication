@@ -1,0 +1,55 @@
+from liboqs import Signature
+
+class DataIntegrityAndAuthenticationPQC:
+    @staticmethod
+    def generate_keys(algorithm='Dilithium2'):
+        """
+        Generates a quantum-resistant key pair using the specified algorithm.
+
+        Parameters:
+            algorithm: The quantum-resistant algorithm to use for key generation. Defaults to 'Dilithium2'.
+
+        Returns:
+            A tuple containing the public key and private key.
+        """
+        sig = Signature(algorithm)
+        public_key, private_key = sig.generate_keypair()
+        return public_key, private_key
+
+    @staticmethod
+    def sign_data(private_key, data, algorithm='Dilithium2'):
+        """
+        Signs data using a quantum-resistant digital signature algorithm.
+
+        Parameters:
+            private_key: Private key for signing.
+            data: Data to sign.
+            algorithm: The quantum-resistant algorithm to use. Defaults to 'Dilithium2'.
+
+        Returns:
+            The digital signature.
+        """
+        sig = Signature(algorithm)
+        signature = sig.sign(data.encode(), private_key)
+        return signature
+
+    @staticmethod
+    def verify_signature(public_key, data, signature, algorithm='Dilithium2'):
+        """
+        Verifies a signature using a quantum-resistant algorithm.
+
+        Parameters:
+            public_key: Public key for verification.
+            data: Original data that was signed.
+            signature: Digital signature to verify.
+            algorithm: The quantum-resistant algorithm used for signing. Defaults to 'Dilithium2'.
+
+        Returns:
+            True if verification is successful, False otherwise.
+        """
+        sig = Signature(algorithm)
+        try:
+            return sig.verify(data.encode(), signature, public_key)
+        except Exception as e:  # Consider catching a more specific exception if possible
+            print(f"Verification failed: {e}")
+            return False
