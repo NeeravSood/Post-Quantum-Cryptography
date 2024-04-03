@@ -1,0 +1,69 @@
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from os import urandom
+import liboqs
+
+# Function to generate AES key from a passphrase
+def generate_aes_key(passphrase: bytes, salt: bytes) -> bytes:
+    """Generates a secure AES key using a passphrase and salt."""
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+        backend=default_backend()
+    )
+    return kdf.derive(passphrase)
+
+# Hybrid Encryption using Kyber (PQC) and AES (Classical)
+def hybrid_encrypt(plaintext: str, pq_public_key) -> tuple:
+    # Encrypt the AES key using Kyber
+    oqs_kem = liboqs.KEM('Kyber512')
+    _, secret_key = oqs_kem.encap_secret(pq_public_key)
+    
+    # Derive AES key from the secret
+    salt = urandom(16)
+    aes_key = generate_aes_key(secret_key, salt)
+    
+    # Encrypt the plaintext message using AES
+    aes_cipher = Cipher(algorithms.AES(aes_key), modes.GCM(urandom(12)), backend=default_backend())
+    encryptor = aes_cipher.encryptor()
+    cipher_text = encryptor.update(plaintext.encode()) + encryptor.finalize()
+    
+    return cipher_text, encryptor.tag, salt, encryptor._nonce  # Return AES encrypted message components
+
+def hybrid_decrypt(cipher_aes: bytes, tag: bytes, salt: bytes, nonce: bytes, pq_private_key) -> str:
+    # Decapsulate with NTRU to get the AES key
+    oqs_kem = liboqs.KEM('Kyber512')
+    secret_key = oqs_kem.decap_secret(cipher_aes, pq_private_key)
+    
+    # Derive the AES key from the secret key and salt
+    aes_key = generate_aes_key(secret_key, salt)
+    
+    # Decrypt the AES part to retrieve the original Kyber ciphertext
+    aes_cipher = Cipher(algorithms.AES(aes_key), modes.GCM(nonce, tag), backend=default_backend())
+    decryptor = aes_cipher.decryptor()
+    cipher_pqc = decryptor.update(cipher_aes) + decryptor.finalize()
+    
+    # Decrypt using Kyber (In practice, this step is not needed as the AES decryption completes the process)
+    # plaintext = some_function_to_decrypt_with_kyber(cipher_pqc, pq_private_key)
+    
+    return cipher_pqc  # For demonstration, return the intermediate step
+
+# Example usage
+if __name__ == "__main__":
+    # Initialize or load cryptographic keys (simplified for demonstration)
+    oqs_kem = liboqs.KEM('Kyber512')
+    pq_public_key, pq_private_key = oqs_kem.keypair()
+    
+    # Encrypt a message using hybrid encryption
+    plaintext = "Top secret message."
+    cipher_aes, tag, salt, nonce = hybrid_encrypt(plaintext, pq_public_key)
+    
+    # Decrypt the message
+    decrypted_message = hybrid_decrypt(cipher_aes, tag, salt, nonce, pq_private_key)
+    print(f"Decrypted message: {decrypted_message}")
